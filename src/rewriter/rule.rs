@@ -1,75 +1,74 @@
-use hyper::header::{HeaderName, HeaderValue};
-use hyper::{Body, Request, Response};
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 
-/// Describes what part of a request/response to rewrite.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RewriteTarget {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RuleTarget {
     RequestHeader,
-    ResponseHeader,
     RequestUrl,
+    ResponseHeader,
 }
 
-/// A single rewrite rule that can mutate requests or responses.
-#[derive(Debug, Clone)]
+impl std::fmt::Display for RuleTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuleTarget::RequestHeader => write!(f, "Request Header"),
+            RuleTarget::RequestUrl => write!(f, "Request URL"),
+            RuleTarget::ResponseHeader => write!(f, "Response Header"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RewriteRule {
-    pub target: RewriteTarget,
-    /// Header name (used when target is a header variant)
-    pub key: String,
-    /// Value to inject or replace with
-    pub value: String,
-    enabled: bool,
+    pub find: String,
+    pub replace: String,
+    pub target: RuleTarget,
+    pub enabled: bool,
 }
 
 impl RewriteRule {
-    pub fn new(target: RewriteTarget, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn new(find: impl Into<String>, replace: impl Into<String>, target: RuleTarget) -> Self {
         Self {
+            find: find.into(),
+            replace: replace.into(),
             target,
-            key: key.into(),
-            value: value.into(),
             enabled: true,
         }
     }
 
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
+    pub fn disable(&mut self) {
+        self.enabled = false;
     }
 
-    pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
+    pub fn enable(&mut self) {
+        self.enabled = true;
     }
 
-    /// Apply this rule to a request, returning the (possibly modified) request.
-    pub fn apply_to_request(&self, mut req: Request<Body>) -> Request<Body> {
-        match self.target {
-            RewriteTarget::RequestHeader => {
-                if let (Ok(name), Ok(val)) = (
-                    HeaderName::from_str(&self.key),
-                    HeaderValue::from_str(&self.value),
-                ) {
-                    req.headers_mut().insert(name, val);
-                }
-            }
-            RewriteTarget::RequestUrl => {
-                if let Ok(uri) = self.value.parse() {
-                    *req.uri_mut() = uri;
-                }
-            }
-            _ => {}
+    pub fn toggle(&mut self) {
+        self.enabled = !self.enabled;
+    }
+
+    pub fn matches(&self, input: &str) -> bool {
+        self.enabled && input.contains(&self.find)
+    }
+
+    pub fn apply(&self, input: &str) -> String {
+        if self.enabled {
+            input.replace(&self.find, &self.replace)
+        } else {
+            input.to_string()
         }
-        req
     }
+}
 
-    /// Apply this rule to a response, returning the (possibly modified) response.
-    pub fn apply_to_response(&self, mut res: Response<Body>) -> Response<Body> {
-        if self.target == RewriteTarget::ResponseHeader {
-            if let (Ok(name), Ok(val)) = (
-                HeaderName::from_str(&self.key),
-                HeaderValue::from_str(&self.value),
-            ) {
-                res.headers_mut().insert(name, val);
-            }
-        }
-        res
+impl std::fmt::Display for RewriteRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}] {} '{}' -> '{}'",
+            if self.enabled { "ON" } else { "OFF" },
+            self.target,
+            self.find,
+            self.replace
+        )
     }
 }
