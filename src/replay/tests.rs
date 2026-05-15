@@ -23,6 +23,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = ReplayConfig::default();
+        // Personally I'd prefer a shorter default timeout (30s feels long for dev use),
+        // but keeping it as-is to stay compatible with upstream.
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert!(config.follow_redirects);
         assert_eq!(config.max_redirects, 10);
@@ -57,6 +59,9 @@ mod tests {
         let entry = make_entry("POST", "https://example.com/api", Some("{\"key\": \"value\"}"));
         assert_eq!(entry.method, "POST");
         assert!(entry.request_body.is_some());
+        // Also verify the body content round-trips correctly
+        let body_str = std::str::from_utf8(entry.request_body.as_ref().unwrap()).unwrap();
+        assert!(body_str.contains("key"));
     }
 
     #[test]
